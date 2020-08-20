@@ -1,0 +1,9 @@
+Name: ZiTTA
+Client ID: 742062293654962187
+Client SECRET: CrOEsEPlZpxu2LhVXtuwKFzXx368N1Y_
+Token: NzQyMDYyMjkzNjU0OTYyMTg3.XzApXQ.TSgqIvVq4dKERd8Re5oz88UAFkM
+Token_2: NDA5Njk2Nzg0NjE3NTcwMzA1.XzApPQ.QGrF5TGfexmSFja1WWUH_SMHJjU
+
+
+
+BOT_TEST: https://discord.com/oauth2/authorize?client_id=742062293654962187&scope=bot
