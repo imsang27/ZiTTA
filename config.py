@@ -10,10 +10,14 @@ load_dotenv()
 class Config:
     """애플리케이션 설정 클래스"""
     
-    # Gemini API 설정
+    # LLM 설정
+    USE_OFFLINE_MODE = os.getenv("USE_OFFLINE_MODE", "false").lower() == "true"
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     LLM_MODEL = os.getenv("LLM_MODEL", "gemini-pro")
     LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    
+    # 오프라인 모드 설정 (로컬 LLM 모델 경로 등)
+    OFFLINE_MODEL_PATH = os.getenv("OFFLINE_MODEL_PATH", "")
     
     # 애플리케이션 설정
     APP_NAME = os.getenv("APP_NAME", "ZiTTA")
@@ -22,10 +26,19 @@ class Config:
     # 데이터베이스 설정
     DB_PATH = os.path.join(os.path.dirname(__file__), "data", "zitta.db")
     
+    # 플러그인 설정
+    PLUGIN_DIR = os.path.join(os.path.dirname(__file__), "plugins")
+    
     @classmethod
     def validate(cls):
         """설정 유효성 검사"""
-        if not cls.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+        if not cls.USE_OFFLINE_MODE:
+            if not cls.GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+        else:
+            # 오프라인 모드에서는 API 키가 필요 없음
+            if not cls.OFFLINE_MODEL_PATH:
+                print("⚠️ 경고: 오프라인 모드가 활성화되었지만 OFFLINE_MODEL_PATH가 설정되지 않았습니다.")
+                print("⚠️ 기본 규칙 기반 응답 시스템을 사용합니다.")
         return True
 
