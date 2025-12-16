@@ -11,9 +11,9 @@ ZiTTA 플러그인 예제
 import sys
 import os
 
-# 상위 디렉토리를 sys.path에 추가하고 core.plugin_manager에서 PluginBase import
+# 상위 디렉토리에서 plugin_manager import
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.plugin_manager import PluginBase
+from plugin_manager import PluginBase
 
 class ExamplePlugin(PluginBase):
     """예제 플러그인"""
