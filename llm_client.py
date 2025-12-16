@@ -214,13 +214,13 @@ class LLMClient:
             포맷팅된 오류 메시지
         """
         # 추천 모델 (안정적이고 일반적으로 사용되는 모델)
+        # 가이드는 주로 gemini-2.5-flash / gemini-2.5-flash-lite 사용을 권장
         recommended_models = [
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-exp",
             "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
             "gemini-2.5-pro",
+            "gemini-flash-latest",
             "gemini-pro-latest",
-            "gemini-flash-latest"
         ]
         
         # 모델 그룹화
@@ -288,7 +288,7 @@ class LLMClient:
 <b>💡 해결 방법</b><br>
 &nbsp;&nbsp;&nbsp;&nbsp;1. .env 파일을 열어주세요<br>
 &nbsp;&nbsp;&nbsp;&nbsp;2. LLM_MODEL 값을 위 목록 중 하나로 변경하세요<br>
-&nbsp;&nbsp;&nbsp;&nbsp;3. 추천: <code>gemini-2.0-flash</code> 또는 <code>gemini-2.5-flash</code><br>
+&nbsp;&nbsp;&nbsp;&nbsp;3. 추천: <code>gemini-2.5-flash</code> 또는 <code>gemini-2.5-flash-lite</code><br>
 &nbsp;&nbsp;&nbsp;&nbsp;4. 현재 설정: <b>{Config.LLM_MODEL}</b>"""
         
         if not available_models:
@@ -336,7 +336,7 @@ API 키를 확인하세요."""
         error_msg += f"""<b>💡 해결 방법:</b><br>
 &nbsp;&nbsp;&nbsp;&nbsp;1. <b>잠시 기다리기:</b> 할당량이 리셋될 때까지 기다리세요 (보통 1분 또는 1일 단위)<br>
 &nbsp;&nbsp;&nbsp;&nbsp;2. <b>다른 모델 사용:</b> 할당량이 더 많은 모델로 변경하세요<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;추천: <code>gemini-2.0-flash</code> 또는 <code>gemini-flash-latest</code><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;추천: <code>gemini-2.5-flash</code> 또는 <code>gemini-2.5-flash-lite</code><br>
 &nbsp;&nbsp;&nbsp;&nbsp;3. <b>유료 플랜으로 업그레이드:</b> 더 높은 할당량을 사용하려면 Google AI Studio에서 플랜을 업그레이드하세요<br><br>
 <b>📚 자세한 정보:</b><br>
 &nbsp;&nbsp;&nbsp;&nbsp;• 할당량 정보: <a href="https://ai.google.dev/gemini-api/docs/rate-limits">https://ai.google.dev/gemini-api/docs/rate-limits</a><br>
