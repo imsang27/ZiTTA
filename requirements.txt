@@ -1,0 +1,5 @@
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+PyQt6-sip>=6.6.0

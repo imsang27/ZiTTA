@@ -38,7 +38,66 @@ ZiTTA는 **J.A.R.V.I.S.나 *인터스텔라*의 TARS처럼**, 음성 인식, 자
 
 ---
 
-## 📦 설치 및 실행 (예시)
+## 📦 설치 및 실행
+
+### 가상환경 사용 (권장)
+
+Windows에서 가상환경을 사용하여 독립적으로 실행하는 방법:
+
+#### 방법 1: 배치 파일 사용 (CMD)
+
+1. **가상환경 생성 및 패키지 설치**
+   ```bash
+   setup_venv.bat
+   ```
+
+2. **프로그램 실행**
+   ```bash
+   run.bat
+   ```
+
+3. **가상환경 활성화 하기**
+   ```bash
+   activate_venv.bat
+   ```
+
+#### 방법 2: PowerShell 스크립트 사용
+
+1. **가상환경 생성 및 패키지 설치**
+   ```powershell
+   .\setup_venv.ps1
+   ```
+
+2. **프로그램 실행**
+   ```powershell
+   .\run.ps1
+   ```
+
+3. **가상환경 활성화만 하기**
+   ```powershell
+   .\activate_venv.ps1
+   ```
+
+#### 방법 3: 수동 설정
+
+```bash
+# 가상환경 생성
+python -m venv venv
+
+# 가상환경 활성화 (CMD)
+venv\Scripts\activate
+
+# 가상환경 활성화 (PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# 패키지 설치
+pip install -r requirements.txt
+
+# 프로그램 실행
+python main.py
+```
+
+### 직접 설치 (가상환경 없이)
 
 ```bash
 git clone https://github.com/your-username/ZiTTA.git
@@ -46,6 +105,8 @@ cd ZiTTA
 pip install -r requirements.txt
 python main.py
 ```
+
+> ⚠️ **주의**: 가상환경을 사용하면 시스템 Python 환경과 독립적으로 패키지를 관리할 수 있어 권장됩니다.
 
 ---
 
