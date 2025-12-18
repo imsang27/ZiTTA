@@ -265,58 +265,10 @@ class MainWindow(QMainWindow):
         plugin_result = self.plugin_manager.handle_command(message)
         if plugin_result:
             self.chat_display.append(f"🔌 <b>플러그인 ({plugin_result.get('plugin', 'Unknown')})</b>: {plugin_result.get('response', '')}")
-            self.input_field.setEnabled(True)
-            self.send_button.setEnabled(True)
-            return
+            # 플러그인 응답 후에도 LLM 응답을 계속 처리
         
-        # 명령 처리
-        command_result = self.llm_client.process_command(message)
-        
-        if command_result["type"] == "todo":
-            # 할 일 관련 명령 처리
-            if command_result["action"] == "create":
-                # LLM이 할 일을 추출하도록 요청
-                todo_prompt = f"다음 명령에서 할 일 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
-                self._process_llm_response(todo_prompt, is_todo_extraction=True)
-            else:
-                todos = self.todo_manager.get_todos(completed=False)
-                if todos:
-                    todo_list = "\n".join([f"- {todo['title']}" for todo in todos])
-                    response = f"현재 할 일 목록:\n{todo_list}"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-                else:
-                    self.chat_display.append("🧠 <b>ZiTTA</b>: 할 일이 없습니다.")
-                self.input_field.setEnabled(True)
-                self.send_button.setEnabled(True)
-        elif command_result["type"] == "memo":
-            # 메모 관련 명령 처리
-            if command_result["action"] == "create":
-                memo_prompt = f"다음 명령에서 메모 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
-                self._process_llm_response(memo_prompt, is_memo_extraction=True)
-            else:
-                memos = self.memo_manager.get_memos()
-                if memos:
-                    memo_list = "\n".join([f"- {memo['title']}" for memo in memos[:10]])
-                    response = f"현재 메모 목록 (최근 10개):\n{memo_list}"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-                else:
-                    self.chat_display.append("🧠 <b>ZiTTA</b>: 메모가 없습니다.")
-                self.input_field.setEnabled(True)
-                self.send_button.setEnabled(True)
-        elif command_result["type"] == "file":
-            # 파일 관련 명령 처리
-            items = self.file_explorer.list_directory(self.current_directory)
-            if items:
-                file_list = "\n".join([f"- {'📁' if item['is_directory'] else '📄'} {item['name']}" for item in items[:20]])
-                response = f"현재 디렉토리 ({self.current_directory}) 내용:\n{file_list}"
-                self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-            else:
-                self.chat_display.append("🧠 <b>ZiTTA</b>: 파일이 없습니다.")
-            self.input_field.setEnabled(True)
-            self.send_button.setEnabled(True)
-        else:
-            # 일반 대화
-            self._process_llm_response(message)
+        # 일반 대화 - LLM 응답 처리
+        self._process_llm_response(message)
     
     def _process_llm_response(self, message: str, is_todo_extraction: bool = False, is_memo_extraction: bool = False):
         """LLM 응답 처리 (비동기)"""
