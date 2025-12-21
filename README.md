@@ -192,7 +192,7 @@ ZiTTA는 플러그인 기반 확장 구조를 지원합니다.
 2. `PluginBase`를 상속하는 클래스 작성:
 
 ```python
-from plugin_manager import PluginBase
+from core.plugin_manager import PluginBase
 
 class MyPlugin(PluginBase):
     def __init__(self):

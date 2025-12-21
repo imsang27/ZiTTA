@@ -13,7 +13,7 @@ import os
 
 # 상위 디렉토리에서 plugin_manager import
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from plugin_manager import PluginBase
+from core.plugin_manager import PluginBase
 
 class ExamplePlugin(PluginBase):
     """예제 플러그인"""
