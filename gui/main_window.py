@@ -23,6 +23,7 @@ from core.file_explorer import FileExplorer
 from core.voice_handler import VoiceHandler
 from core.plugin_manager import PluginManager
 from core.command_router import CommandRouter
+from core.engine import ZiTTAEngine
 
 class LLMWorker(QThread):
     """LLM 응답을 비동기로 처리하는 워커 스레드"""
@@ -64,6 +65,16 @@ class MainWindow(QMainWindow):
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
         self.command_router = CommandRouter()
+        
+        # ZiTTA 엔진 초기화 (기존 모듈들을 주입)
+        self.engine = ZiTTAEngine(
+            command_router=self.command_router,
+            plugin_manager=self.plugin_manager,
+            todo_manager=self.todo_manager,
+            memo_manager=self.memo_manager,
+            file_explorer=self.file_explorer,
+            llm_client=self.llm_client
+        )
         
         self.conversation_history = []
         self.current_directory = os.getcwd()
@@ -263,105 +274,53 @@ class MainWindow(QMainWindow):
         self.input_field.setEnabled(False)
         self.send_button.setEnabled(False)
         
-        # 플러그인 명령 처리 먼저 시도
-        plugin_result = self.plugin_manager.handle_command(message)
-        if plugin_result:
-            self.chat_display.append(f"🔌 <b>플러그인 ({plugin_result.get('plugin', 'Unknown')})</b>: {plugin_result.get('response', '')}")
+        # 엔진을 통해 메시지 처리
+        result = self.engine.handle(message, self.current_directory)
+        
+        # 결과에 따라 처리
+        if result["type"] == "plugin":
+            # 플러그인 응답
+            self.chat_display.append(f"🔌 <b>플러그인 ({result.get('plugin_name', 'Unknown')})</b>: {result.get('response', '')}")
             self.input_field.setEnabled(True)
             self.send_button.setEnabled(True)
-            return
-        
-        # 명령 라우팅
-        routed = self.command_router.route(message)
-        
-        if routed.type == "todo":
-            # 할 일 관련 명령 처리
-            if routed.action == "create":
-                # LLM이 할 일을 추출하도록 요청
-                todo_prompt = f"다음 명령에서 할 일 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
-                self._process_llm_response(todo_prompt, is_todo_extraction=True)
+        elif result["needs_llm"]:
+            # LLM 처리가 필요한 경우 (todo/memo create 또는 일반 대화)
+            if result["type"] in ["todo", "memo"]:
+                # todo/memo 생성 시 LLM으로 제목 추출
+                self._process_llm_response(
+                    result["llm_prompt"],
+                    result_type=result["type"],
+                    action=result["action"]
+                )
             else:
-                todos = self.todo_manager.get_todos(completed=False)
-                if todos:
-                    todo_list = "\n".join([f"- {todo['title']}" for todo in todos])
-                    response = f"현재 할 일 목록:\n{todo_list}"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-                else:
-                    self.chat_display.append("🧠 <b>ZiTTA</b>: 할 일이 없습니다.")
-                self.input_field.setEnabled(True)
-                self.send_button.setEnabled(True)
-        elif routed.type == "memo":
-            # 메모 관련 명령 처리
-            if routed.action == "create":
-                memo_prompt = f"다음 명령에서 메모 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
-                self._process_llm_response(memo_prompt, is_memo_extraction=True)
-            else:
-                memos = self.memo_manager.get_memos()
-                if memos:
-                    memo_list = "\n".join([f"- {memo['title']}" for memo in memos[:10]])
-                    response = f"현재 메모 목록 (최근 10개):\n{memo_list}"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-                else:
-                    self.chat_display.append("🧠 <b>ZiTTA</b>: 메모가 없습니다.")
-                self.input_field.setEnabled(True)
-                self.send_button.setEnabled(True)
-        elif routed.type == "file":
-            # 파일 관련 명령 처리
-            items = self.file_explorer.list_directory(self.current_directory)
-            if items:
-                # payload의 filter에 따라 필터링
-                filter_type = routed.payload.get("filter", "all") if routed.payload else "all"
-                if filter_type == "dir":
-                    items = [item for item in items if item["is_directory"]]
-                elif filter_type == "file":
-                    items = [item for item in items if not item["is_directory"]]
-                # filter_type == "all"이거나 None이면 필터링 없음
-                
-                if items:
-                    file_list = "\n".join([f"- {'📁' if item['is_directory'] else '📄'} {item['name']}" for item in items[:20]])
-                    filter_text = "폴더만" if filter_type == "dir" else "파일만" if filter_type == "file" else "전체"
-                    response = f"현재 디렉토리 ({self.current_directory}) 내용 ({filter_text}):\n{file_list}"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
-                else:
-                    filter_text = "폴더" if filter_type == "dir" else "파일" if filter_type == "file" else "항목"
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {filter_text}이(가) 없습니다.")
-            else:
-                self.chat_display.append("🧠 <b>ZiTTA</b>: 파일이 없습니다.")
-            self.input_field.setEnabled(True)
-            self.send_button.setEnabled(True)
+                # 일반 대화
+                self._process_llm_response(result["llm_prompt"])
         else:
-            # 일반 대화 (LLM fallback)
-            self._process_llm_response(message)
+            # 즉시 응답 가능한 경우 (todo/memo/file list)
+            self.chat_display.append(f"🧠 <b>ZiTTA</b>: {result.get('response', '')}")
+            self.input_field.setEnabled(True)
+            self.send_button.setEnabled(True)
     
-    def _process_llm_response(self, message: str, is_todo_extraction: bool = False, is_memo_extraction: bool = False):
+    def _process_llm_response(self, message: str, result_type: str = None, action: str = None):
         """LLM 응답 처리 (비동기)"""
         self.worker = LLMWorker(self.llm_client, message, self.conversation_history)
         
-        if is_todo_extraction:
-            def handle_todo_response(response):
-                # 할 일 추가
-                todo_title = response.strip()
-                if todo_title:
-                    self.todo_manager.add_todo(todo_title)
+        if result_type in ["todo", "memo"] and action == "create":
+            # todo/memo 생성 시 엔진을 통해 처리
+            def handle_create_response(response):
+                final_result = self.engine.process_llm_response(response, result_type, action)
+                self.chat_display.append(f"🧠 <b>ZiTTA</b>: {final_result.get('response', '')}")
+                # UI 업데이트
+                if result_type == "todo":
                     self._load_todos()
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: 할 일 '{todo_title}'을 추가했습니다.")
-                self.input_field.setEnabled(True)
-                self.send_button.setEnabled(True)
-            
-            self.worker.response_ready.connect(handle_todo_response)
-        elif is_memo_extraction:
-            def handle_memo_response(response):
-                # 메모 추가
-                memo_title = response.strip()
-                if memo_title:
-                    self.memo_manager.add_memo(memo_title)
+                elif result_type == "memo":
                     self._load_memos()
-                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: 메모 '{memo_title}'을 추가했습니다.")
                 self.input_field.setEnabled(True)
                 self.send_button.setEnabled(True)
             
-            self.worker.response_ready.connect(handle_memo_response)
+            self.worker.response_ready.connect(handle_create_response)
         else:
+            # 일반 대화
             def handle_response(response):
                 # append()는 HTML을 지원하므로 HTML이 포함된 경우 그대로 전달
                 self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
