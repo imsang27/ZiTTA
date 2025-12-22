@@ -5,16 +5,14 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Dict, Any
 
-
-@dataclass
+@dataclass(frozen=True)
 class CommandResult:
     """명령 라우팅 결과"""
     type: str  # "todo", "memo", "file", "chat"
     action: Optional[str] = None  # "create", "list" 등
-    payload: Optional[Any] = None  # 추가 데이터 (선택적)
-
+    payload: Optional[Dict[str, Any]] = None  # 추가 데이터 (선택적)
 
 class CommandRouter:
     """명령 라우터"""
