@@ -30,11 +30,13 @@ ZiTTA는 **J.A.R.V.I.S.나 *인터스텔라*의 TARS처럼**, 음성 인식, 자
 
 | 분야 | 기술 |
 |------|------|
-| 언어 | Python |
-| 음성 | Whisper (STT), pyttsx3 (TTS) |
+| 언어 | Python 3.10+ |
+| 음성 | OpenAI Whisper (STT), pyttsx3 (TTS) |
 | LLM | Google Gemini API (온라인), 규칙 기반 (오프라인) |
-| GUI | PyQt6 |
-| 기타 | SQLite / File I/O |
+| GUI | PyQt6 (6.6.0+) |
+| 데이터베이스 | SQLite |
+| 환경 관리 | python-dotenv |
+| 기타 | File I/O, 플러그인 시스템 |
 
 ---
 
@@ -100,13 +102,25 @@ python main.py
 ### 직접 설치 (가상환경 없이)
 
 ```bash
-git clone https://github.com/your-username/ZiTTA.git
+git clone https://github.com/imsang27/ZiTTA.git
 cd ZiTTA
 pip install -r requirements.txt
 python main.py
 ```
 
 > ⚠️ **주의**: 가상환경을 사용하면 시스템 Python 환경과 독립적으로 패키지를 관리할 수 있어 권장됩니다.
+
+### 필수 패키지
+
+프로젝트 실행에 필요한 주요 패키지:
+
+- `google-generativeai>=0.3.0` - Google Gemini API 클라이언트
+- `python-dotenv>=1.0.0` - 환경 변수 관리
+- `PyQt6>=6.6.0` - GUI 프레임워크
+- `openai-whisper>=20231117` - 음성 인식 (STT)
+- `pyttsx3>=2.90` - 음성 합성 (TTS)
+
+전체 패키지 목록은 `requirements.txt`를 참고하세요.
 
 ---
 
@@ -140,6 +154,12 @@ APP_VERSION=0.1.0
   - 현재 모델, 재시도 가능 시간, 공식 문서 링크(`rate-limits`, `usage`)를 함께 출력해 줍니다.
   - 사용자는 안내에 따라 **잠시 대기**, **모델 변경**, **플랜 업그레이드** 중 하나를 선택할 수 있습니다.
 
+#### API 키 발급 방법
+
+1. [Google AI Studio](https://makersuite.google.com/app/apikey)에 접속
+2. API 키 생성
+3. 생성된 API 키를 `.env` 파일의 `GEMINI_API_KEY`에 설정
+
 ### 오프라인 모드 사용
 
 오프라인 모드로 실행하려면 `.env` 파일에서:
@@ -150,6 +170,8 @@ USE_OFFLINE_MODE=true
 
 오프라인 모드에서는 인터넷 연결 없이 기본 규칙 기반 응답 시스템을 사용합니다.
 
+> ⚠️ **참고**: 오프라인 모드에서는 제한적인 기능만 사용할 수 있습니다. 할 일/메모 관리, 파일 탐색 등은 정상 작동하지만, LLM 기반 대화는 규칙 기반 응답으로 대체됩니다.
+
 ---
 
 ## 💡 주요 기능 사용법
@@ -158,17 +180,34 @@ USE_OFFLINE_MODE=true
 
 ZiTTA는 자연어로 다양한 명령을 처리할 수 있습니다:
 
-- **할 일 관리**: "할 일 추가: 회의 준비", "할 일 목록 보여줘"
-- **메모 관리**: "메모 작성: 프로젝트 아이디어", "메모 목록"
-- **파일 탐색**: "파일 목록 보여줘", "현재 폴더 열어줘"
+- **할 일 관리**: 
+  - "할 일 추가: 회의 준비", "할일 등록: 프로젝트 완료"
+  - "할 일 목록 보여줘", "할일 리스트", "할 일 보기"
+- **메모 관리**: 
+  - "메모 작성: 프로젝트 아이디어", "메모 추가: 회의록"
+  - "메모 목록", "메모 리스트", "메모 보기"
+- **파일 탐색**: 
+  - "파일 목록 보여줘", "현재 폴더 열어줘"
+  - "폴더만 보여줘", "파일만 보여줘"
 - **일반 대화**: 자유로운 대화 및 질문
+
+명령은 키워드 기반으로 자동 라우팅되며, 처리 우선순위는 **플러그인 → 명령 라우터 → 로컬 처리 → LLM** 순서입니다.
 
 ### 음성 기능
 
-- **STT (음성 인식)**: Whisper를 사용하여 음성 파일을 텍스트로 변환
-- **TTS (음성 합성)**: pyttsx3를 사용하여 텍스트를 음성으로 변환
+- **STT (음성 인식)**: 
+  - OpenAI Whisper를 사용하여 음성 파일을 텍스트로 변환
+  - 기본 모델: `base` (필요시 변경 가능)
+  - 한국어 지원
+- **TTS (음성 합성)**: 
+  - pyttsx3를 사용하여 텍스트를 음성으로 변환
+  - 한국어 음성 지원 (시스템에 한국어 음성 패키지 설치 필요)
+  - 속도 및 볼륨 조절 가능
 
-> ⚠️ **참고**: 음성 기능은 시스템에 적절한 라이브러리가 설치되어 있어야 합니다.
+> ⚠️ **참고**: 
+> - Whisper와 pyttsx3가 설치되어 있어야 음성 기능을 사용할 수 있습니다.
+> - Whisper 모델은 첫 실행 시 자동으로 다운로드됩니다.
+> - TTS는 시스템에 설치된 음성 엔진을 사용합니다 (Windows: SAPI5).
 
 ### 오프라인 모드
 
@@ -182,9 +221,26 @@ USE_OFFLINE_MODE=true
 
 ---
 
+## 🧪 테스트
+
+프로젝트에는 기본 테스트 코드가 포함되어 있습니다:
+
+```bash
+# 가상환경 활성화 후
+pytest tests/
+```
+
+또는 특정 테스트 파일 실행:
+
+```bash
+pytest tests/test_engine.py
+```
+
+---
+
 ## 🔌 플러그인 개발
 
-ZiTTA는 플러그인 기반 확장 구조를 지원합니다.
+ZiTTA는 플러그인 기반 확장 구조를 지원합니다. 플러그인은 명령 처리 우선순위에서 가장 높은 우선순위를 가지며, 사용자 명령을 먼저 처리할 수 있습니다.
 
 ### 플러그인 생성 방법
 
@@ -198,20 +254,83 @@ class MyPlugin(PluginBase):
     def __init__(self):
         super().__init__("MyPlugin", "1.0.0")
     
+    def on_load(self):
+        """플러그인 로드 시 호출"""
+        print(f"플러그인 '{self.name}' v{self.version} 로드됨")
+    
+    def on_unload(self):
+        """플러그인 언로드 시 호출"""
+        print(f"플러그인 '{self.name}' 언로드됨")
+    
     def handle_command(self, command: str, context: dict = None):
+        """
+        명령 처리
+        
+        Args:
+            command: 사용자 명령
+            context: 컨텍스트 정보
+            
+        Returns:
+            처리 결과 딕셔너리 또는 None (처리하지 않음)
+        """
+        command_lower = command.lower()
+        
         # 명령 처리 로직
-        if "특정키워드" in command.lower():
+        if "특정키워드" in command_lower:
             return {
                 "type": "plugin_response",
                 "plugin": self.name,
                 "response": "응답 메시지"
             }
+        
+        # 처리하지 않으면 None 반환
         return None
+    
+    def get_commands(self) -> list:
+        """지원하는 명령 목록 반환"""
+        return ["특정키워드"]
 ```
 
 3. 애플리케이션 재시작 시 자동으로 플러그인이 로드됩니다.
 
+### 플러그인 구조
+
+- **플러그인 디렉토리**: `plugins/`
+- **자동 로드**: `plugins/` 디렉토리의 모든 `.py` 파일이 자동으로 스캔되어 로드됩니다
+- **플러그인 우선순위**: 플러그인은 명령 처리 시 가장 먼저 실행됩니다
+- **에러 처리**: 플러그인 로드 실패 시 에러 메시지를 출력하고 계속 진행합니다
+
 예제 플러그인은 `plugins/example_plugin.py`를 참고하세요.
+
+---
+
+## 📁 프로젝트 구조
+
+```
+ZiTTA/
+├── core/                  # 핵심 엔진 모듈
+│   ├── engine.py          # 메시지 처리 엔진
+│   ├── llm_client.py      # LLM 클라이언트 (Gemini API)
+│   ├── command_router.py  # 명령 라우터
+│   ├── plugin_manager.py  # 플러그인 관리자
+│   ├── todo_manager.py    # 할 일 관리자
+│   ├── memo_manager.py    # 메모 관리자
+│   ├── file_explorer.py   # 파일 탐색기
+│   ├── voice_handler.py   # 음성 처리 (STT/TTS)
+│   ├── config.py          # 설정 관리
+│   └── types.py           # 타입 정의
+├── gui/                   # GUI 모듈
+│   └── main_window.py     # 메인 윈도우
+├── plugins/               # 플러그인 디렉토리
+│   └── example_plugin.py  # 예제 플러그인
+├── data/                  # 데이터 디렉토리
+│   └── zitta.db           # SQLite 데이터베이스
+├── tests/                 # 테스트 코드
+│   └── test_engine.py     # 엔진 테스트
+├── main.py                # 메인 실행 파일
+├── requirements.txt       # 패키지 의존성
+└── README.md              # 프로젝트 문서
+```
 
 ---
 
