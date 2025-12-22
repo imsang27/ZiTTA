@@ -1,0 +1,16 @@
+{
+  "todo": {
+    "keywords": ["할 일", "할일", "todo", "해야 할", "해야할", "해야"],
+    "list_keywords": ["할 일 목록", "할일 목록", "할 일 리스트", "할일 리스트", "할 일 보기", "할일 보기"],
+    "create_words": ["추가", "등록", "만들", "생성", "create", "add"]
+  },
+  "memo": {
+    "keywords": ["메모", "memo", "기억", "저장"],
+    "list_keywords": ["메모 목록", "메모 리스트", "메모 보기", "메모 검색"],
+    "create_words": ["추가", "등록", "만들", "생성", "create", "add"]
+  },
+  "file": {
+    "keywords": ["파일", "file", "폴더", "디렉토리", "directory"]
+  }
+}
+
