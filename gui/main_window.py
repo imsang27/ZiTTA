@@ -309,9 +309,22 @@ class MainWindow(QMainWindow):
             # 파일 관련 명령 처리
             items = self.file_explorer.list_directory(self.current_directory)
             if items:
-                file_list = "\n".join([f"- {'📁' if item['is_directory'] else '📄'} {item['name']}" for item in items[:20]])
-                response = f"현재 디렉토리 ({self.current_directory}) 내용:\n{file_list}"
-                self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
+                # payload의 filter에 따라 필터링
+                filter_type = routed.payload.get("filter", "all") if routed.payload else "all"
+                if filter_type == "dir":
+                    items = [item for item in items if item["is_directory"]]
+                elif filter_type == "file":
+                    items = [item for item in items if not item["is_directory"]]
+                # filter_type == "all"이거나 None이면 필터링 없음
+                
+                if items:
+                    file_list = "\n".join([f"- {'📁' if item['is_directory'] else '📄'} {item['name']}" for item in items[:20]])
+                    filter_text = "폴더만" if filter_type == "dir" else "파일만" if filter_type == "file" else "전체"
+                    response = f"현재 디렉토리 ({self.current_directory}) 내용 ({filter_text}):\n{file_list}"
+                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {response}")
+                else:
+                    filter_text = "폴더" if filter_type == "dir" else "파일" if filter_type == "file" else "항목"
+                    self.chat_display.append(f"🧠 <b>ZiTTA</b>: {filter_text}이(가) 없습니다.")
             else:
                 self.chat_display.append("🧠 <b>ZiTTA</b>: 파일이 없습니다.")
             self.input_field.setEnabled(True)

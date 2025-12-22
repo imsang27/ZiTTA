@@ -35,6 +35,8 @@ class CommandRouter:
         
         # file 키워드
         self.file_keywords = config["file"]["keywords"]
+        self.file_dir_keywords = config["file"]["dir_keywords"]
+        self.file_file_keywords = config["file"]["file_keywords"]
     
     def route(self, message: str) -> CommandResult:
         """
@@ -69,7 +71,14 @@ class CommandRouter:
         
         # 파일 관련 명령 (범용 단어 "목록/리스트/보기" 제거)
         if any(keyword in message_lower for keyword in self.file_keywords):
-            return CommandResult(type="file", action="list")
+            # 필터 판정: "폴더/디렉토리/directory" 포함 시 디렉토리만
+            if any(keyword in message_lower for keyword in self.file_dir_keywords):
+                return CommandResult(type="file", action="list", payload={"filter": "dir"})
+            # "파일/file"만 명시된 경우 파일만 (선택적, 기본은 all)
+            elif any(keyword in message_lower for keyword in self.file_file_keywords):
+                return CommandResult(type="file", action="list", payload={"filter": "all"})
+            # 기본값: 모두 표시
+            return CommandResult(type="file", action="list", payload={"filter": "all"})
         
         # 일반 대화
         return CommandResult(type="chat", action=None)
