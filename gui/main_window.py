@@ -22,6 +22,7 @@ from core.memo_manager import MemoManager
 from core.file_explorer import FileExplorer
 from core.voice_handler import VoiceHandler
 from core.plugin_manager import PluginManager
+from core.command_router import CommandRouter
 
 class LLMWorker(QThread):
     """LLM 응답을 비동기로 처리하는 워커 스레드"""
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         self.voice_handler = VoiceHandler()
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
+        self.command_router = CommandRouter()
         
         self.conversation_history = []
         self.current_directory = os.getcwd()
@@ -269,12 +271,12 @@ class MainWindow(QMainWindow):
             self.send_button.setEnabled(True)
             return
         
-        # 명령 처리
-        command_result = self.llm_client.process_command(message)
+        # 명령 라우팅
+        routed = self.command_router.route(message)
         
-        if command_result["type"] == "todo":
+        if routed.type == "todo":
             # 할 일 관련 명령 처리
-            if command_result["action"] == "create":
+            if routed.action == "create":
                 # LLM이 할 일을 추출하도록 요청
                 todo_prompt = f"다음 명령에서 할 일 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
                 self._process_llm_response(todo_prompt, is_todo_extraction=True)
@@ -288,9 +290,9 @@ class MainWindow(QMainWindow):
                     self.chat_display.append("🧠 <b>ZiTTA</b>: 할 일이 없습니다.")
                 self.input_field.setEnabled(True)
                 self.send_button.setEnabled(True)
-        elif command_result["type"] == "memo":
+        elif routed.type == "memo":
             # 메모 관련 명령 처리
-            if command_result["action"] == "create":
+            if routed.action == "create":
                 memo_prompt = f"다음 명령에서 메모 제목을 추출해주세요. 제목만 간단히 답변하세요: {message}"
                 self._process_llm_response(memo_prompt, is_memo_extraction=True)
             else:
@@ -303,7 +305,7 @@ class MainWindow(QMainWindow):
                     self.chat_display.append("🧠 <b>ZiTTA</b>: 메모가 없습니다.")
                 self.input_field.setEnabled(True)
                 self.send_button.setEnabled(True)
-        elif command_result["type"] == "file":
+        elif routed.type == "file":
             # 파일 관련 명령 처리
             items = self.file_explorer.list_directory(self.current_directory)
             if items:
@@ -315,7 +317,7 @@ class MainWindow(QMainWindow):
             self.input_field.setEnabled(True)
             self.send_button.setEnabled(True)
         else:
-            # 일반 대화
+            # 일반 대화 (LLM fallback)
             self._process_llm_response(message)
     
     def _process_llm_response(self, message: str, is_todo_extraction: bool = False, is_memo_extraction: bool = False):
