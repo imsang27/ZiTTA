@@ -6,8 +6,9 @@ import os
 import importlib
 import importlib.util
 import inspect
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from .config import Config
+from .types import Intent
 
 
 class PluginBase:
@@ -151,7 +152,7 @@ class PluginManager:
                 return False
         return False
     
-    def handle_command(self, command: str, context: Dict = None) -> Optional[Dict]:
+    def handle_command(self, command: str, context: Dict = None) -> Optional[Intent]:
         """
         명령을 플러그인에 전달하여 처리
         
@@ -160,17 +161,62 @@ class PluginManager:
             context: 컨텍스트 정보
             
         Returns:
-            처리 결과 또는 None
+            Intent 객체 또는 None (처리하지 않음)
         """
         for plugin in self.plugins.values():
             if plugin.enabled:
                 try:
                     result = plugin.handle_command(command, context)
                     if result is not None:
-                        return result
+                        # Intent로 변환
+                        return self._convert_to_intent(result, plugin.name)
                 except Exception as e:
                     print(f"플러그인 '{plugin.name}' 명령 처리 오류: {e}")
         return None
+    
+    def _convert_to_intent(self, result: Union[Dict, Intent], plugin_name: str) -> Intent:
+        """
+        플러그인 결과를 Intent로 변환 (구버전 dict 호환 지원)
+        
+        Args:
+            result: 플러그인 반환값 (Dict 또는 Intent)
+            plugin_name: 플러그인 이름
+            
+        Returns:
+            Intent 객체
+        """
+        # 이미 Intent인 경우 그대로 반환
+        if isinstance(result, Intent):
+            return result
+        
+        # dict인 경우 Intent로 변환
+        if isinstance(result, dict):
+            # 구버전 형식: {"type":"plugin_response","plugin":"X","response":"..."}
+            if result.get("type") == "plugin_response":
+                return Intent(
+                    type="plugin",
+                    action="respond",
+                    payload={
+                        "plugin": result.get("plugin", plugin_name),
+                        "response": result.get("response", "")
+                    },
+                    source=f"plugin:{plugin_name}"
+                )
+            # 기타 dict 형식도 Intent로 변환 시도
+            return Intent(
+                type=result.get("type", "plugin"),
+                action=result.get("action"),
+                payload=result.get("payload") or result,  # payload가 없으면 전체 dict를 payload로
+                source=f"plugin:{plugin_name}"
+            )
+        
+        # 예상치 못한 타입인 경우 기본 Intent 반환
+        return Intent(
+            type="plugin",
+            action="respond",
+            payload={"result": result},
+            source=f"plugin:{plugin_name}"
+        )
     
     def get_plugin_list(self) -> List[Dict[str, Any]]:
         """

@@ -3,12 +3,13 @@ ZiTTA 엔진 모듈
 메시지 처리 로직을 중앙화하여 core 라이브러리화를 위한 기반을 제공합니다.
 """
 from typing import Dict, Optional, Any
-from .command_router import CommandRouter, CommandResult
+from .command_router import CommandRouter
 from .plugin_manager import PluginManager
 from .todo_manager import TodoManager
 from .memo_manager import MemoManager
 from .file_explorer import FileExplorer
 from .llm_client import LLMClient
+from .types import Intent
 
 
 class ZiTTAEngine:
@@ -64,17 +65,9 @@ class ZiTTAEngine:
             }
         """
         # 1. 플러그인 처리 먼저 시도
-        plugin_result = self.plugin_manager.handle_command(message)
-        if plugin_result:
-            return {
-                "type": "plugin",
-                "action": None,
-                "response": plugin_result.get("response", ""),
-                "needs_llm": False,
-                "llm_prompt": None,
-                "payload": None,
-                "plugin_name": plugin_result.get("plugin", "Unknown")
-            }
+        plugin_intent = self.plugin_manager.handle_command(message)
+        if plugin_intent:
+            return self._intent_to_dict(plugin_intent, message)
         
         # 2. 명령 라우팅
         routed = self.command_router.route(message)
@@ -88,17 +81,49 @@ class ZiTTAEngine:
             return self._handle_file(routed, current_directory or ".")
         else:
             # 4. 일반 대화 (LLM fallback)
-            return {
-                "type": "chat",
-                "action": None,
-                "response": None,  # LLM 응답은 비동기로 처리
-                "needs_llm": True,
-                "llm_prompt": message,
-                "payload": None,
-                "plugin_name": None
-            }
+            return self._intent_to_dict(routed, message)
     
-    def _handle_todo(self, routed: CommandResult, message: str) -> Dict[str, Any]:
+    def _intent_to_dict(self, intent: Intent, message: str) -> Dict[str, Any]:
+        """
+        Intent를 GUI에서 사용할 수 있는 dict 형태로 변환
+        
+        Args:
+            intent: Intent 객체
+            message: 원본 메시지 (LLM 프롬프트 생성 시 필요)
+            
+        Returns:
+            GUI용 딕셔너리
+        """
+        result = {
+            "type": intent.type,
+            "action": intent.action,
+            "payload": intent.payload,
+            "plugin_name": None
+        }
+        
+        # Intent 타입별 처리
+        if intent.type == "plugin":
+            # 플러그인 응답
+            if intent.payload:
+                result["response"] = intent.payload.get("response", "")
+                result["plugin_name"] = intent.payload.get("plugin", "Unknown")
+            result["needs_llm"] = False
+            result["llm_prompt"] = None
+        elif intent.type == "chat":
+            # 일반 대화 (LLM 필요)
+            result["response"] = None
+            result["needs_llm"] = True
+            result["llm_prompt"] = message
+        else:
+            # todo/memo/file는 각각의 _handle_* 메서드에서 처리
+            # 여기서는 기본값만 설정
+            result["response"] = None
+            result["needs_llm"] = False
+            result["llm_prompt"] = None
+        
+        return result
+    
+    def _handle_todo(self, routed: Intent, message: str) -> Dict[str, Any]:
         """할 일 관련 명령 처리"""
         if routed.action == "create":
             # LLM이 할 일을 추출하도록 요청
@@ -131,7 +156,7 @@ class ZiTTAEngine:
                 "plugin_name": None
             }
     
-    def _handle_memo(self, routed: CommandResult, message: str) -> Dict[str, Any]:
+    def _handle_memo(self, routed: Intent, message: str) -> Dict[str, Any]:
         """메모 관련 명령 처리"""
         if routed.action == "create":
             # LLM이 메모 제목을 추출하도록 요청
@@ -164,7 +189,7 @@ class ZiTTAEngine:
                 "plugin_name": None
             }
     
-    def _handle_file(self, routed: CommandResult, current_directory: str) -> Dict[str, Any]:
+    def _handle_file(self, routed: Intent, current_directory: str) -> Dict[str, Any]:
         """파일 관련 명령 처리"""
         items = self.file_explorer.list_directory(current_directory)
         if items:
