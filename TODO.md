@@ -81,6 +81,7 @@ Intent / Action을 문자열이 아닌 **계약(Contract)** 으로 고정
 
 ### 🔹 추가 (설계 강제 – TODO 1에서 이식)
 - [ ] **Unknown intent/action 입력에 대한 처리 정책을 명시적으로 결정**
+  - (예: UNKNOWN Enum / 예외 발생 / 환경별 분기 중 선택)
 
 ---
 
@@ -161,5 +162,20 @@ ZiTTA를 **한 줄 명령으로 실행** 가능하게 만들기
 - [ ] `google.generativeai` → `google.genai` 마이그레이션
 - [ ] Python 3.11+ 전환 계획 (2026-10-04 이전)
 - [ ] GitHub Actions pip 캐시 비대 문제 (필요 시 정리)
+- [ ] CI 속도/캐시 최적화 전략 결정 (선택)
+  - 배경: torch / whisper / nvidia-cu12 계열로 인해 CI 설치 시간이 길고 캐시가 비대해질 수 있음
+  - [ ] 옵션 A: CI 전용 requirements 분리 (`requirements-ci.txt`)
+    - 목적: core 로직 테스트는 가볍게, 무거운 ML 의존성은 CI에서 제외
+    - 체크:
+      - [ ] `requirements-ci.txt` 생성 (pytest 등 테스트 필수 + core 런타임 최소 deps만)
+      - [ ] GitHub Actions에서 `pip install -r requirements-ci.txt`로 변경
+      - [ ] 로컬/프로덕션은 기존 `requirements.txt` 유지
+  - [ ] 옵션 B: CI에서 CPU 전용 torch 사용
+    - 목적: CUDA wheel 설치/캐시 비대 방지
+    - 체크:
+      - [ ] CI에서만 torch를 CPU 빌드로 설치하도록 분기
+  - [ ] 옵션 C: 캐시 의존 경로 명시 (`cache-dependency-path`)
+    - 목적: requirements 변경 시 캐시 키 관리 명확화
+      - [ ] `actions/setup-python`에 `cache-dependency-path: requirements.txt`(또는 CI 전용 파일) 지정
 
 ---
