@@ -15,6 +15,22 @@
 
 ---
 
+## ZiTTA Core 확장 로드맵 (2 · 3 · 4)
+---
+
+### 목표 요약
+---
+- **3 (Enum 고정)**: 도메인 계약을 잠가서 이후 확장(패키징/CLI/플러그인)이 흔들리지 않게 만들기
+- **2 (패키징)**: core를 진짜 라이브러리로 만들어 재사용·배포·엔트리포인트 기반을 마련
+- **4 (CLI)**: "한 줄 실행" 인터페이스로 사용성과 개발 생산성 확보
+
+### 진행 순서 권장
+---
+- [ ] **3 → 2 → 4**
+  - 이유: 계약(데이터 모델)을 먼저 고정해야 패키징/CLI가 덜 깨진다.
+
+---
+
 ## CI 강화 (1번 마무리) ✅
 ---
 ### 목표
@@ -34,94 +50,106 @@
 
 ---
 
-## Intent 도메인 고정 (3번)
+## Intent.type / action을 Enum으로 고정 (3)
 ---
 ### 목표
 Intent / Action을 문자열이 아닌 **계약(Contract)** 으로 고정
 
-### TODO
-- [ ] `core/intent.py` (또는 대응 파일)에 Enum 정의
-  - 예: `IntentType`, `ActionType`
-- [ ] 외부 입력 → Enum 변환 로직 구현
-  - 예: `parse_intent_type(value: str) -> IntentType`
-- [ ] 라우팅/분기 로직에서 문자열 비교 제거
-- [ ] 테스트 추가
-  - [ ] 정상 케이스
-  - [ ] 대소문자/공백 등 변형 입력
-  - [ ] 알 수 없는 값 처리
-
-### 반드시 결정해야 할 정책
-- [ ] Unknown 값 처리 방식
-  - A. `UNKNOWN` Enum으로 흡수
-  - B. 예외 발생 (fail fast)
-  - C. 기본값으로 fallback
-
 ### 완료 기준
-- [ ] `intent.type`, `action`이 코드 전반에서 Enum으로만 사용됨
-- [ ] 문자열 오타로 인한 분기 실패가 구조적으로 불가능
+- [ ] 코드 전반에서 `intent.type` / `action`을 **문자열 비교로 분기하지 않음**
+- [ ] 외부 입력(LLM/payload/CLI)은 **파싱 함수로 Enum 변환** 후 처리
+- [ ] 최소 테스트 포함
+
+### TODO
+- [ ] Enum 설계 확정
+  - [ ] `IntentType` Enum 생성
+  - [ ] `Action`(또는 `ActionType`) Enum 생성
+  - [ ] `UNKNOWN` 포함 여부 결정(권장: 포함)
+- [ ] 변환 로직 추가
+  - [ ] `parse_intent_type(str) -> IntentType`
+  - [ ] `parse_action(str) -> Action`
+  - [ ] 대소문자/공백/하이픈 등 정규화 규칙 정의
+- [ ] 라우팅 코드 교체
+  - [ ] 기존 `"todo"` / `"memo"` 같은 문자열 분기 제거 → Enum 기반 분기
+- [ ] 테스트 추가
+  - [ ] 정상 입력 → Enum 매핑
+  - [ ] 변형 입력(대소문자/공백) 처리
+  - [ ] 알 수 없는 값 → UNKNOWN 또는 예외 정책 검증
+
+### 리스크 체크
+- [ ] LLM이 만들어내는 값이 흔들려도 **정규화/UNKNOWN**으로 흡수되도록 했는가?
 
 ---
 
-## Core 패키징 (2번)
+## core를 진짜 패키지로 만들기 (pyproject.toml) (2)
 ---
 ### 목표
 ZiTTA core를 **진짜 Python 패키지**로 만들어 재사용/확장 기반 확보
 
-### TODO (최소 스코프)
-- [ ] `pyproject.toml` 생성
-- [ ] 패키지 이름 확정 (`zitta` 권장)
-- [ ] 패키지 레이아웃 결정
-  - [ ] `src/zitta/...` 구조 (권장)
-  - [ ] 또는 현재 구조 유지 (단기 선택)
-- [ ] 의존성 분리
-  - [ ] runtime dependencies
-  - [ ] dev dependencies (pytest 등)
-- [ ] 로컬 editable install 테스트
-  - `pip install -e .`
-- [ ] CI에서 import / 테스트 정상 동작 확인
-
-### 주의 구간
-- [ ] 상대경로 / 절대경로 import 혼재
-- [ ] 테스트가 `sys.path`에 의존하는 구조
-- [ ] 엔트리 파일(`main.py`) 위치 혼선
-
 ### 완료 기준
-- [ ] 어디서든 `import zitta` 가능
-- [ ] CI 테스트가 동일하게 통과
+- [ ] `pip install -e .` 후 **어디서든 `import zitta` 가능**
+- [ ] CI/pytest 통과
+- [ ] `python -m zitta`(4번)로 연결 가능한 기반 마련
+
+### TODO
+- [ ] 패키지 네이밍 확정
+  - [ ] 권장: `zitta` (모듈명과 import 일관성)
+- [ ] 레이아웃 선택
+  - [ ] 권장: `src/zitta/...` (장기 안정)
+  - [ ] 단기: 현재 레이아웃 유지 (나중에 다시 공사 가능성 큼)
+- [ ] `pyproject.toml` 작성
+  - [ ] project metadata(name, version, description, requires-python)
+  - [ ] dependencies 정리 (runtime)
+  - [ ] optional-dependencies: `dev` (pytest 등)
+- [ ] 엔트리 파일 정리
+  - [ ] 기존 `main.py` 역할을 어디에 둘지 결정(패키지 내부로 흡수 권장)
+- [ ] 설치/동작 검증
+  - [ ] `pip install -e .`
+  - [ ] `python -c "import zitta; print(zitta.__version__)"` (버전 노출하면 좋음)
+  - [ ] `pytest` 통과
+
+### 리스크 체크
+- [ ] 테스트가 `sys.path`/루트 경로에 기대고 있지 않은가?
+- [ ] import 경로가 `core.*`와 `zitta.*`로 혼재되지 않는가?
 
 ---
 
-## CLI 인터페이스 추가 (4번)
+## CLI 인터페이스 얹기 (python -m zitta "...") (4)
 ---
 ### 목표
 ZiTTA를 **한 줄 명령으로 실행** 가능하게 만들기
 
-### MVP 스펙
-- `python -m zitta "할 일 추가"`
-- 내부적으로 core 흐름 그대로 사용
-- 출력은 표준 출력 위주 (부작용 최소화)
+### 완료 기준
+- [ ] `python -m zitta "할 일 추가"`가 동작
+- [ ] CLI는 core를 "우회"하지 않고 **core 파이프라인을 호출**
+- [ ] 최소 스모크 테스트 포함
+
+### MVP 스펙(과욕 금지)
+- [ ] 입력: 단일 문자열(따옴표로 감싼 문장)
+- [ ] 출력: 처리 결과를 stdout에 출력
+- [ ] 에러: 사용자 친화 메시지 + non-zero exit code
 
 ### TODO
-- [ ] `zitta/__main__.py` 구현
-- [ ] argv → text 파싱
-- [ ] core 호출 (intent 생성 → dispatch)
+- [ ] `zitta/__main__.py` 추가
+  - [ ] argv 파싱 (빈 입력 처리 포함)
+  - [ ] core 호출(예: `process_text(text)` 같은 단일 진입점 만들기)
+- [ ] "단일 진입점" 함수 마련
+  - [ ] CLI/GUI/테스트가 공용으로 쓸 수 있는 함수 1개로 정리
 - [ ] 스모크 테스트
-  - [ ] 빈 입력 / help 처리
-  - [ ] 정상 명령 처리
-  - [ ] 알 수 없는 명령 처리
+  - [ ] `python -m zitta ""` → 도움말/사용법
+  - [ ] `python -m zitta "할 일 추가 ..."` → 성공
+  - [ ] 알 수 없는 명령 → 에러 메시지
 
-### 완료 기준
-- [ ] 로컬/CI에서 CLI 실행 재현 가능
-- [ ] CLI가 core를 우회하지 않고 “사용”만 함
+### 리스크 체크
+- [ ] CLI가 커지기 시작하면 유지보수 지옥이다 → **MVP만** 하고 멈출 것
 
 ---
 
-## 권장 작업 순서
+## 운영 체크리스트
 ---
-1. [x] CI 로그 요약 강화 (`-ra`) ✅
-2. [ ] Intent / Action Enum 고정
-3. [ ] Core 패키징
-4. [ ] CLI 인터페이스 추가
+- [ ] 각 작업 끝날 때마다 **완료 기준(Definition of Done)** 체크
+- [ ] PR/커밋 단위는 "한 가지 의도"만 담기 (Enum / 패키징 / CLI 혼합 금지)
+- [ ] 3번(Enum) 끝나기 전엔 4번(CLI) 스펙 확장 금지
 
 ---
 
