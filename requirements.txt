@@ -5,3 +5,4 @@ PyQt6-Qt6>=6.6.0
 PyQt6-sip>=6.6.0
 openai-whisper>=20231117
 pyttsx3>=2.90
+pytest
