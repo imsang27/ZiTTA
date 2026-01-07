@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ZiTTA Core Animation</title>
+  <style>
+    html, body { margin:0; height:100%; background:#0B0E14; overflow:hidden; }
+    canvas { display:block; width:100vw; height:100vh; }
+    /* 데모용 상태 버튼 */
+    .hud {
+      position: fixed; left: 12px; top: 12px;
+      display:flex; gap:8px; flex-wrap:wrap;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      z-index: 10;
+    }
+    .hud button{
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.85);
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+    .hud button:hover{ background: rgba(255,255,255,0.10); }
+    .hud .tag{
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.70);
+      background: rgba(255,255,255,0.04);
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <button data-state="idle">Idle</button>
+    <button data-state="wake">Wake / Listen</button>
+    <button data-state="think">Thinking</button>
+    <button data-state="resolve">Resolve</button>
+    <div class="tag" id="stateTag">state: idle</div>
+  </div>
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d", { alpha: true });
+
+  // ====== HiDPI 대응 ======
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ====== 상태 머신 ======
+  const State = Object.freeze({
+    IDLE: "idle",
+    WAKE: "wake",
+    THINK: "think",
+    RESOLVE: "resolve",
+  });
+
+  let state = State.IDLE;
+  let stateT = 0; // 상태 내부 시간 (초)
+  const stateTag = document.getElementById("stateTag");
+
+  // 외부에서 상태를 설정할 수 있는 함수 (PyQt6 연동용)
+  window.setAnimationState = function(next) {
+    if (next === "idle" || next === "wake" || next === "think" || next === "resolve") {
+      setState(next);
+    }
+  };
+
+  function setState(next) {
+    // 유효한 상태인지 확인
+    if (next !== State.IDLE && next !== State.WAKE && next !== State.THINK && next !== State.RESOLVE) {
+      return;
+    }
+    state = next;
+    stateT = 0;
+    if (stateTag) {
+      stateTag.textContent = `state: ${next}`;
+    }
+    // 상태 진입 연출: WAKE는 파티클 밀도 순간 증가, RESOLVE는 즉시 감쇠 트리거
+    if (state === State.WAKE) {
+      burst(26, "inside"); // 내부 입자 증가
+    }
+    if (state === State.RESOLVE) {
+      // resolve는 "급감"이 핵심: 파티클 타겟 수를 빠르게 줄이는 플래그로 처리
+      resolveKick = 1.0;
+    }
+  }
+
+  // 데모 버튼
+  document.querySelectorAll(".hud button").forEach(btn => {
+    btn.addEventListener("click", () => setState(btn.dataset.state));
+  });
+
+  // ====== 컬러 (핑크 80 / 레드 20 느낌) ======
+  // 기본 톤: 차갑게(화이트/핑크) → WAKE에서 약간 따뜻(레드 기여 증가)
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+  const COLORS = {
+    bg: "#0B0E14",
+    ring: { r: 243, g: 244, b: 246 },         // near-white
+    pink: { r: 255, g: 106, b: 138 },         // #FF6A8A
+    red:  { r: 255, g: 46,  b: 46  },         // #FF2E2E
+  };
+
+  function mixRGB(a, b, t) {
+    return {
+      r: Math.round(lerp(a.r, b.r, t)),
+      g: Math.round(lerp(a.g, b.g, t)),
+      b: Math.round(lerp(a.b, b.b, t)),
+    };
+  }
+  function rgba(c, a){ return `rgba(${c.r},${c.g},${c.b},${a})`; }
+
+  // ====== 유틸 ======
+  function rand(min, max){ return min + Math.random()*(max-min); }
+  function randN() { // -1..1
+    return (Math.random()*2 - 1);
+  }
+
+  // 간단 노이즈: 부드러운 브라운/드리프트 느낌용 (완전한 Perlin 대신)
+  // sin 기반의 pseudo-noise. 파티클마다 seed를 둬서 서로 다른 흐름.
+  function flowNoise(t, seed) {
+    // t: seconds
+    const x = Math.sin(t * 1.7 + seed * 11.1) * 0.6 + Math.sin(t * 0.9 + seed * 3.3) * 0.4;
+    const y = Math.cos(t * 1.3 + seed * 7.7) * 0.6 + Math.cos(t * 0.8 + seed * 5.5) * 0.4;
+    return { x, y };
+  }
+
+  // ====== 파라미터(튜닝 포인트) ======
+  const cfg = {
+    ringRadiusRatio: 0.17,           // 화면 기준 링 반지름 비율
+    ringThickness: 2.2,              // 링 선 두께 (px)
+    ringGlow: 0.18,                  // 링 글로우 알파
+    pulseAmpIdle: 0.008,             // 0.5~1% 스케일 변화
+    pulseSpeedIdle: 0.7,             // 느린 pulse
+    wakeBreathAmp: 0.035,            // "깊게 호흡" (ring scale)
+    wakeBreathDur: 1.1,              // breath duration
+    // 파티클
+    maxParticles: 420,
+    idleSpawnRate: 16,               // /sec (테두리에서 약하게)
+    wakeSpawnRate: 48,               // /sec (일시 증가)
+    thinkSpawnRate: 80,              // /sec (내부 생성 증가)
+    resolveTarget: 24,               // resolve 후 남길 잔광 수준
+  };
+
+  // ====== 파티클 정의 ======
+  const particles = [];
+  let resolveKick = 0; // resolve 진입 시 감쇠 가속
+
+  class Particle {
+    constructor({ x, y, vx, vy, life, size, mode, seed, orbit, warmMix }) {
+      this.x = x; this.y = y;
+      this.vx = vx; this.vy = vy;
+      this.life = life;        // total life
+      this.age = 0;
+      this.size = size;
+      this.mode = mode;        // "rim", "inside", "think"
+      this.seed = seed ?? Math.random()*999;
+      this.orbit = orbit ?? 0; // 0..1 orbit affinity
+      this.warmMix = warmMix ?? 0; // 0 cool -> 1 warm
+      this.spin = rand(-1, 1) * 0.9; // 궤도 회전용
+      this.phase = Math.random() * Math.PI * 2;
+      this.pull = rand(0.12, 0.32); // 중심으로 돌아오려는 "귀환 성향"
+    }
+
+    update(dt, cx, cy, r, globalT) {
+      this.age += dt;
+
+      // 상태별 동역학: "직선 ❌", 곡선/브라운/나선
+      // 1) 흐름 노이즈로 미세한 드리프트
+      const n = flowNoise(globalT + this.phase, this.seed);
+      const drift = 12; // px/sec 스케일
+      this.vx += n.x * drift * dt;
+      this.vy += n.y * drift * dt;
+
+      // 2) THINK에서 일부는 중심으로 "돌아옴" (pull)
+      if (state === State.THINK || state === State.RESOLVE) {
+        const dx = cx - this.x;
+        const dy = cy - this.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        // 너무 강하면 빨려 들어가므로 약하게
+        const pullStrength = this.pull * 18; // px/sec^2
+        this.vx += (dx / d) * pullStrength * dt;
+        this.vy += (dy / d) * pullStrength * dt;
+      }
+
+      // 3) WAKE에서 일부는 "원 궤도 회전"
+      if (state === State.WAKE && this.orbit > 0.4) {
+        const dx = this.x - cx;
+        const dy = this.y - cy;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        // 접선 방향 벡터
+        const tx = -dy / d;
+        const ty = dx / d;
+        const orbitStrength = 28 * this.orbit; // px/sec^2
+        this.vx += tx * orbitStrength * dt * this.spin;
+        this.vy += ty * orbitStrength * dt * this.spin;
+      }
+
+      // 4) 링 밖으로 너무 멀리 가면 서서히 감쇠(자연스러운 소멸 유도)
+      const dist = Math.hypot(this.x - cx, this.y - cy);
+      if (dist > r * 4.2) {
+        this.vx *= (1 - 0.9 * dt);
+        this.vy *= (1 - 0.9 * dt);
+      }
+
+      // 위치 업데이트
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      // 속도 감쇠 (느림)
+      const damp = 0.25; // per sec
+      const k = Math.exp(-damp * dt);
+      this.vx *= k; this.vy *= k;
+
+      // RESOLVE에서 빠른 정리
+      if (state === State.RESOLVE) {
+        const rk = clamp01(resolveKick);
+        const extra = 1 + rk * 2.2;
+        const kk = Math.exp(-(damp * extra) * dt);
+        this.vx *= kk; this.vy *= kk;
+      }
+    }
+
+    alpha() {
+      // fade-out: 끝으로 갈수록 부드럽게 사라짐
+      const t = clamp01(this.age / this.life);
+      // smoothstep 기반 (튀지 않게)
+      const s = t * t * (3 - 2 * t);
+      // 초반은 조금 더 은은
+      return clamp01(1 - s);
+    }
+
+    isDead() {
+      return this.age >= this.life;
+    }
+
+    color() {
+      // warmMix로 핑크-레드 혼합 비율 변화 (WAKE에서 살짝 warm)
+      const c = mixRGB(COLORS.pink, COLORS.red, clamp01(this.warmMix));
+      return c;
+    }
+
+    draw(ctx) {
+      const a = this.alpha();
+      if (a <= 0) return;
+      const c = this.color();
+
+      // 글로우 느낌(라이트) - 과하지 않게
+      ctx.beginPath();
+      ctx.fillStyle = rgba(c, 0.22 * a);
+      ctx.arc(this.x, this.y, this.size * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 코어 점
+      ctx.beginPath();
+      ctx.fillStyle = rgba(c, 0.70 * a);
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ====== 파티클 스폰 ======
+  function spawnParticle(where, cx, cy, r, warmMix = 0) {
+    const angle = Math.random() * Math.PI * 2;
+
+    let x, y;
+    if (where === "rim") {
+      // 테두리에서 살짝 흔들리며 나오게
+      const rr = r + rand(-1.5, 1.5);
+      x = cx + Math.cos(angle) * rr;
+      y = cy + Math.sin(angle) * rr;
+    } else {
+      // 내부 생성
+      const rr = Math.sqrt(Math.random()) * (r * 0.92);
+      x = cx + Math.cos(angle) * rr;
+      y = cy + Math.sin(angle) * rr;
+    }
+
+    // 바깥 방향 기본 속도(느림)
+    const out = where === "rim" ? 14 : 18; // px/sec
+    const vx0 = Math.cos(angle) * out + randN() * 6;
+    const vy0 = Math.sin(angle) * out + randN() * 6;
+
+    // THINK에선 직선이 아닌 곡선을 위해 초기 속도에 약간의 횡방향 추가
+    const tang = 10;
+    const tx = -Math.sin(angle);
+    const ty =  Math.cos(angle);
+
+    const isThink = (state === State.THINK);
+    const vx = vx0 + (isThink ? tx * rand(-tang, tang) : 0);
+    const vy = vy0 + (isThink ? ty * rand(-tang, tang) : 0);
+
+    const life = where === "rim"
+      ? rand(3.8, 6.0)     // 오래 살아서 "정지인데 살아있음"
+      : rand(2.8, 5.2);
+
+    const size = where === "rim" ? rand(0.8, 1.6) : rand(0.9, 1.9);
+    const orbit = (state === State.WAKE) ? Math.random() : 0;
+
+    particles.push(new Particle({
+      x, y, vx, vy, life, size,
+      mode: where,
+      seed: Math.random()*999,
+      orbit,
+      warmMix
+    }));
+
+    // max cap
+    if (particles.length > cfg.maxParticles) {
+      particles.splice(0, particles.length - cfg.maxParticles);
+    }
+  }
+
+  function burst(n, where) {
+    const { cx, cy, r } = scene();
+    for (let i = 0; i < n; i++) {
+      const warm = (state === State.WAKE) ? 0.35 : 0.0;
+      spawnParticle(where === "inside" ? "inside" : "rim", cx, cy, r, warm);
+    }
+  }
+
+  // ====== 씬 파라미터 ======
+  function scene() {
+    const w = innerWidth, h = innerHeight;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const r = Math.min(w, h) * cfg.ringRadiusRatio;
+    return { w, h, cx, cy, r };
+  }
+
+  // ====== 링 드로잉 ======
+  function drawRing(ctx, cx, cy, r, t) {
+    // 상태별 링 스케일
+    let scale = 1.0;
+
+    if (state === State.IDLE) {
+      const p = Math.sin(t * cfg.pulseSpeedIdle * Math.PI * 2) * cfg.pulseAmpIdle;
+      scale = 1 + p;
+    }
+
+    if (state === State.WAKE) {
+      // 한 번 깊게 호흡: 진입 후 1.1초 동안 크게 부풀었다가 돌아옴
+      const u = clamp01(stateT / cfg.wakeBreathDur);
+      // sin으로 부드럽게
+      const breath = Math.sin(u * Math.PI); // 0→1→0
+      scale = 1 + breath * cfg.wakeBreathAmp;
+    }
+
+    if (state === State.THINK) {
+      // THINK는 불안정한 흔들림이 아니라 "확장/수축"이 더 느리게
+      const p = Math.sin(t * 0.55 * Math.PI * 2) * 0.010;
+      scale = 1 + p;
+    }
+
+    if (state === State.RESOLVE) {
+      // 안정으로 회귀: scale=1로 수렴
+      const u = clamp01(stateT / 1.0);
+      const settle = 1 - (1 - u) * (1 - u); // easeOut
+      scale = lerp(1.02, 1.0, settle);
+    }
+
+    const rr = r * scale;
+
+    // 링 글로우(바깥)
+    ctx.beginPath();
+    ctx.strokeStyle = rgba(COLORS.ring, cfg.ringGlow);
+    ctx.lineWidth = cfg.ringThickness * 6.0;
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 링 본체
+    ctx.beginPath();
+    ctx.strokeStyle = rgba(COLORS.ring, 0.75);
+    ctx.lineWidth = cfg.ringThickness;
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // ====== 루프 ======
+  let last = performance.now();
+  let globalT = 0;
+
+  // 스폰 누적(프레임레이트 무관)
+  let spawnAcc = 0;
+
+  function tick(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    globalT += dt;
+    stateT += dt;
+
+    const { w, h, cx, cy, r } = scene();
+
+    // 배경 (완전 투명 대신 살짝 잔상: "흩날림" 연출에 유리)
+    // 너무 남기면 번짐이 심해짐 → 낮은 알파로
+    ctx.fillStyle = "rgba(11,14,20,0.22)";
+    ctx.fillRect(0, 0, w, h);
+
+    // 상태별 스폰 레이트
+    let rate = cfg.idleSpawnRate;
+    let where = "rim";
+    let warm = 0.0;
+
+    if (state === State.WAKE) {
+      rate = cfg.wakeSpawnRate;
+      where = Math.random() < 0.65 ? "inside" : "rim";
+      warm = 0.35; // 살짝 따뜻
+    } else if (state === State.THINK) {
+      rate = cfg.thinkSpawnRate;
+      where = "inside";
+      warm = 0.15;
+    } else if (state === State.RESOLVE) {
+      // 급감: 스폰 자체를 거의 멈춤
+      rate = 2;
+      where = "rim";
+      warm = 0.0;
+    }
+
+    spawnAcc += dt * rate;
+    while (spawnAcc >= 1) {
+      spawnAcc -= 1;
+      spawnParticle(where, cx, cy, r, warm);
+    }
+
+    // RESOLVE에서 파티클 수를 목표치로 줄이기
+    if (state === State.RESOLVE) {
+      resolveKick = clamp01(resolveKick + dt * 1.5);
+
+      const target = cfg.resolveTarget;
+      if (particles.length > target) {
+        // 오래된/투명한 것부터 정리
+        particles.sort((a, b) => (a.age / a.life) - (b.age / b.life));
+        particles.splice(0, Math.min(particles.length - target, 6)); // 한 번에 너무 많이 지우면 튐
+      } else {
+        // 충분히 정리되면 idle로 자연 복귀(데모용)
+        if (stateT > 1.6) setState(State.IDLE);
+      }
+    } else {
+      resolveKick = 0;
+    }
+
+    // 업데이트
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.update(dt, cx, cy, r, globalT);
+      if (p.isDead()) particles.splice(i, 1);
+    }
+
+    // 링 먼저
+    drawRing(ctx, cx, cy, r, globalT);
+
+    // 파티클
+    for (const p of particles) p.draw(ctx);
+
+    // 중앙 코어(아주 약한 점)
+    ctx.beginPath();
+    ctx.fillStyle = "rgba(243,244,246,0.24)";
+    ctx.arc(cx, cy, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    requestAnimationFrame(tick);
+  }
+
+  // 초기 채움: idle에서 바로 살아있는 느낌
+  (function seedInitial() {
+    const { cx, cy, r } = scene();
+    for (let i = 0; i < 120; i++) spawnParticle("rim", cx, cy, r, 0);
+  })();
+
+  requestAnimationFrame(tick);
+
+  // ====== 키보드 단축키(데모) ======
+  // 1: idle, 2: wake, 3: think, 4: resolve
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "1") setState(State.IDLE);
+    if (e.key === "2") setState(State.WAKE);
+    if (e.key === "3") setState(State.THINK);
+    if (e.key === "4") setState(State.RESOLVE);
+  });
+})();
+</script>
+</body>
+</html>
