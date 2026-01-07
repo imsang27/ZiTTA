@@ -6,10 +6,11 @@ import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-    QLabel, QSplitter, QMessageBox, QTabWidget, QFileDialog
+    QLabel, QSplitter, QMessageBox, QTabWidget, QFileDialog, QStackedWidget
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QFont
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 import json
 
 # 상위 디렉토리에서 모듈 import
@@ -78,6 +79,7 @@ class MainWindow(QMainWindow):
         
         self.conversation_history = []
         self.current_directory = os.getcwd()
+        self.current_state = "idle"  # 애니메이션 상태: idle, wake, think, resolve
         
         # UI 초기화
         self._init_ui()
@@ -86,13 +88,49 @@ class MainWindow(QMainWindow):
     
     def _init_ui(self):
         """UI 초기화"""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # 배경 애니메이션을 위한 스택 위젯
+        stack = QStackedWidget()
+        self.setCentralWidget(stack)
         
-        main_layout = QVBoxLayout(central_widget)
+        # 배경 애니메이션 (레이어 0)
+        self.animation_view = QWebEngineView()
+        glow_path = os.path.join(os.path.dirname(__file__), "glow.html")
+        if os.path.exists(glow_path):
+            file_url = QUrl.fromLocalFile(os.path.abspath(glow_path))
+            self.animation_view.load(file_url)
+        else:
+            # glow.html이 없으면 빈 위젯
+            no_animation = QWidget()
+            no_animation.setStyleSheet("background: #0B0E14;")
+            self.animation_view = no_animation
+        stack.addWidget(self.animation_view)
+        
+        # 메인 콘텐츠 (레이어 1)
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         
         # 탭 위젯 생성
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                background: rgba(11, 14, 20, 0.85);
+                border: none;
+            }
+            QTabBar::tab {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.8);
+                padding: 8px 16px;
+                border: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+            }
+            QTabBar::tab:selected {
+                background: rgba(255, 255, 255, 0.2);
+                color: rgba(255, 255, 255, 1.0);
+            }
+        """)
         
         # 탭 1: 대화 및 할 일
         self._init_chat_tab()
@@ -104,6 +142,10 @@ class MainWindow(QMainWindow):
         self._init_file_explorer_tab()
         
         main_layout.addWidget(self.tabs)
+        stack.addWidget(content_widget)
+        
+        # 콘텐츠 레이어를 위로
+        stack.setCurrentIndex(1)
     
     def _init_chat_tab(self):
         """대화 및 할 일 탭 초기화"""
@@ -268,6 +310,9 @@ class MainWindow(QMainWindow):
         if not message:
             return
         
+        # 상태 변경: wake (입력 시작)
+        self._set_animation_state("wake")
+        
         # 사용자 메시지 표시
         self.chat_display.append(f"<b>사용자</b>: {message}")
         self.input_field.clear()
@@ -281,10 +326,13 @@ class MainWindow(QMainWindow):
         if result["type"] == "plugin":
             # 플러그인 응답
             self.chat_display.append(f"🔌 <b>플러그인 ({result.get('plugin_name', 'Unknown')})</b>: {result.get('response', '')}")
+            self._set_animation_state("resolve")
             self.input_field.setEnabled(True)
             self.send_button.setEnabled(True)
         elif result["needs_llm"]:
             # LLM 처리가 필요한 경우 (todo/memo create 또는 일반 대화)
+            # 상태 변경: think (처리 중)
+            self._set_animation_state("think")
             if result["type"] in ["todo", "memo"]:
                 # todo/memo 생성 시 LLM으로 제목 추출
                 self._process_llm_response(
@@ -298,6 +346,7 @@ class MainWindow(QMainWindow):
         else:
             # 즉시 응답 가능한 경우 (todo/memo/file list)
             self.chat_display.append(f"🧠 <b>ZiTTA</b>: {result.get('response', '')}")
+            self._set_animation_state("resolve")
             self.input_field.setEnabled(True)
             self.send_button.setEnabled(True)
     
@@ -315,6 +364,7 @@ class MainWindow(QMainWindow):
                     self._load_todos()
                 elif result_type == "memo":
                     self._load_memos()
+                self._set_animation_state("resolve")
                 self.input_field.setEnabled(True)
                 self.send_button.setEnabled(True)
             
@@ -330,6 +380,7 @@ class MainWindow(QMainWindow):
                 # 최근 20개만 유지
                 if len(self.conversation_history) > 20:
                     self.conversation_history = self.conversation_history[-20:]
+                self._set_animation_state("resolve")
                 self.input_field.setEnabled(True)
                 self.send_button.setEnabled(True)
             
@@ -341,8 +392,18 @@ class MainWindow(QMainWindow):
     def _handle_error(self, error_msg):
         """오류 처리"""
         self.chat_display.append(f"❌ <b>오류</b>: {error_msg}")
+        self._set_animation_state("resolve")
         self.input_field.setEnabled(True)
         self.send_button.setEnabled(True)
+    
+    def _set_animation_state(self, state: str):
+        """애니메이션 상태 설정"""
+        if state in ["idle", "wake", "think", "resolve"]:
+            self.current_state = state
+            if hasattr(self, 'animation_view') and isinstance(self.animation_view, QWebEngineView):
+                # JavaScript 함수 호출
+                js_code = f"window.setAnimationState('{state}');"
+                self.animation_view.page().runJavaScript(js_code)
     
     def _load_todos(self):
         """할 일 목록 로드"""
